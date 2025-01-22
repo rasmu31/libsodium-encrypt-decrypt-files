@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="fr">
+<head>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Files encrypting / decrypting</title>
+	<link rel="icon" type="image/png" sizes="32x32" href="./favicon.png">
+	
+	<link rel="stylesheet" href="app.css">
+	<script src="sodium.js"></script>
+	<script src="jquery-latest.min.js"></script>
+	<script src="app.js"></script>
+</head>
+
+<body>
+	<div id="container">	
+		<div>
+			<h1>Files encrypting / decrypting</h1>
+		</div>
+			
+		<br>Maximum size allowed : 5Gb.<br>
+		The amount of RAM memory available on your device may be limiting.<br>
+		If the % progress no longer changes, it is probably because you do not have enough memory available at the moment.<br>
+		To free up memory, close the most demanding applications as well as tabs in your browser.<br>
+			
+		<div id="encryptPanel">
+			<div>
+				<h3>Encrypt a file : </h3>
+				<div>
+					<label>Password :</label><input type="text" id="passwordEncrypt" class="">
+				</div>
+				<input type="file" id="encryptButton" class="">
+			</div>
+			
+			<div class="downloadPanel">
+				<button id="download_crypted">Encrypt file</button>
+				<div class="success"></div>
+			</div>
+			
+			<div id="errors_block_encrypt"></div>
+		</div>
+		
+		<hr>
+					
+		<div id="decryptPanel">
+			<div>
+				<h3>Decrypt a file :</h3>
+				<div>
+					<label>Password :</label><input type="text" id="passwordDecrypt" class="">
+				</div>
+				<input type="file" id="decryptButton" class="">	
+			</div>
+			
+			<div class="downloadPanel">
+				<button id="download_decrypted">Decrypt file</button>
+				<div class="success"></div>
+			</div>
+			
+			<div id="errors_block_decrypt"></div>
+		</div>
+		
+		<br><br>
+		<a href="./encrypt-decrypt.zip">Source code</a>
+		<br><br>
+		The page can be used locally on your computer or smartphone without Internet access.<br>
+		To do this, download the <a href="./encrypt-decrypt.zip">source code</a>,
+		unzip the archive into a folder and launch the index.html file with your browser.		
+	</div>
+</body>
+</html>

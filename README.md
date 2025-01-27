@@ -3,7 +3,9 @@ Encrypt / decrypt files with a password with libsodium.js in your browser.
 
 libsodium.js : browsers-sumo file https://github.com/jedisct1/libsodium.js/blob/master/dist/browsers-sumo/sodium.js
 
-It's a simple version of https://hat.sh/ service, you can find source code here https://github.com/sh-dv/hat.sh
+It's a simple version of https://hat.sh/ service, you can find source code here https://github.com/sh-dv/hat.sh<br /><br/>
+For writing files, File System Access API is used (no limit of file size) or blob (RAM memory limit) as a fallback for not supported browsers.<br />
+See list : https://developer.mozilla.org/en-US/docs/Web/API/Window/showSaveFilePicker#browser_compatibility
 
 Functions used : sodium.crypto_secretstream_xchacha20poly1305_*
 

@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>Files encrypting / decrypting</title>
+	<title>Encryption décryption de fichiers</title>
 	<link rel="icon" type="image/png" sizes="32x32" href="./favicon.png">
 	
 	<link rel="stylesheet" href="app.css">
@@ -17,11 +17,26 @@
 			<h1>Files encrypting / decrypting</h1>
 		</div>
 			
-		<br>Maximum size allowed : 5Gb.<br>
-		The amount of RAM memory available on your device may be limiting.<br>
-		If the % progress no longer changes, it is probably because you do not have enough memory available at the moment.<br>
-		To free up memory, close the most demanding applications as well as tabs in your browser.<br>
-			
+		<div>
+			This tool has 2 ways of saving file after encrypting and decrypting :<br>
+			- v1 : for all browsers.<br>
+			The final file is stored in memory before offering it for download, which implies that the maximum size
+			of a file to be encrypted/decrypted cannot exceed the RAM memory available on your device.<br>
+			Maximum authorized size: 5Gb.<br>
+			If the % progress no longer changes, it is probably because you do not have enough memory available at the moment.<br>
+			Before trying again, to free up memory, close the most demanding applications as well as tabs in your browser.<br>
+			<br>
+			- v2: for some browsers
+			(<a href="https://developer.mozilla.org/en-US/docs/Web/API/Window/showOpenFilePicker#browser_compatibility">see the list</a>):<br>
+			This version uses an API that allows you to save the file on your device as you go and therefore
+			does not encounter the limiting memory problem of v1. <br>
+			So prefer v2 if possible by using one of the supported browsers
+			(as of 01/26/2025: Chrome >= 86, Edge >= 86, Opera >= 72, Chrome Android >= 132).
+		</div>
+		
+		<br>
+		<div id="version-implementation"></div>
+		
 		<div id="encryptPanel">
 			<div>
 				<h3>Encrypt a file : </h3>
@@ -63,7 +78,8 @@
 		<br><br>
 		The page can be used locally on your computer or smartphone without Internet access.<br>
 		To do this, download the <a href="./encrypt-decrypt.zip">source code</a>,
-		unzip the archive into a folder and launch the index.html file with your browser.		
+		unzip the archive into a folder and launch the index.html file with your browser.	
+
 	</div>
 </body>
 </html>

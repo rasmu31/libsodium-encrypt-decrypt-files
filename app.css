@@ -12,11 +12,12 @@ body {
 #container {
 	display: block;
 	margin: 20px;
+	padding: 0px 0px 50px 0px;
 }
 
 h1 {
 	font-size: 130%;
-	margin: 0 0 10px 0;
+	margin: 20px 0px;
 }
 
 #maintenance {
@@ -25,6 +26,13 @@ h1 {
 
 hr {
 	border: 1px dotted black;
+}
+
+#version-implementation {
+	border: 1px solid black;
+	padding: 10px 10px;
+	font-weight: bold;
+	width: fit-content;
 }
 
 input, button {
@@ -50,8 +58,24 @@ input[type="file"] {
 	border: grey 1px solid;
 }
 
+#stop_crypted {
+	display: none;
+}
+
+
+#stop_decrypted {
+	display: none;
+}
+
 #errors_block_encrypt, #errors_block_decrypt {
-	color: red;
+	display: none;
+	color: #58151c;
+    background-color: #f8d7da;
+    padding: 10px;
+    margin: 10px 0;
+    border: 1px solid #f1aeb5;
+    border-radius: 5px;
+    width: fit-content;
 }
 
 a, a:visited {color: #098BCC;}
@@ -118,7 +142,6 @@ a, a:visited {color: #098BCC;}
     transform: rotate(360deg);
   }
 }
-
 
 
 @media (max-width: 1240px) {

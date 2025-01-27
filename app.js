@@ -2,9 +2,13 @@
 // LimitedEncryptionPanel.js
 // LimitedDecryptionPanel.js
 
-$(document).ready(function() {
+// I added support of File System API https://developer.chrome.com/docs/capabilities/web-apis/file-system-access#write-file
+// To support browsers not handling File System API, see web worker implementation in project https://github.com/jimmywarting/native-file-system-adapter
+
+$(document).ready(function() {	
+	
 	var MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024; // 5Gb
-	var CHUNK_SIZE = 128 * 1024 * 1024; // 128 Mb
+	var CHUNK_SIZE = 16 * 1024 * 1024; // 256 Mb
 	const SIGNATURES = {v2_symmetric: "zDKO6XYXioc"};
 	const encoder = new TextEncoder();
 	const decoder = new TextDecoder();
@@ -18,36 +22,14 @@ $(document).ready(function() {
 	var limitedState = null;
 	var limitedHeader = null;
 	var limitedEncFileBuff = null;
+	var fileHandleEncrypt = null;
 	
 	var selectedFileDecrypt = null;
 	var passwordDecrypt = null;
 	var limitedDecIndex = null;
 	var limitedDecFileBuff = null;
 	var limitedTestDecFileBuff = null;
-	
-	/*
-	if (!window.Worker) {
-		console.log("Worker not supported in your browser");
-	}
-	else {
-		const worker = new Worker("sw.js");
-
-		worker.onmessage = function (message) {
-			console.log("Message received from worker");
-			document.querySelector(".result").innerText =
-			message.data.primes[message.data.primes.length - 1];
-		};
-
-		function doPointlessComputationsInWorker() {
-			worker.postMessage({
-				multiplier: multiplier,
-				iterations: iterations,
-			});
-		}
-		
-		document.querySelector("button").onclick = doPointlessComputationsInWorker;
-	}
-	*/
+	var fileHandleDecrypt = null;
 		
 	var printError = function(error, block) {
 		$('#' + block).append(`<div class="error">${error.name}: ${error.message}</div>`);
@@ -80,6 +62,53 @@ $(document).ready(function() {
 		limitedDecFileBuff = null;
 		limitedTestDecFileBuff = null;
 	}
+	
+	const supportsFileSystemAccess = function() {
+		if ('showSaveFilePicker' in window) {
+			try {
+				return window.self === window.top;
+			}
+			catch {
+				return false;
+			}
+		}
+		return false;
+	};
+	
+	async function getNewFileHandle(filename) {
+		handle = null;
+		
+		try {
+			handle = await window.showSaveFilePicker({suggestedName: filename});
+		}
+		catch (err) {
+
+		}
+					
+		return handle;
+	}
+
+	async function writeFile(fileHandle, contents) {
+		// Create a FileSystemWritableFileStream to write to.
+		const size = (await fileHandle.getFile()).size;
+		
+		const writable = await fileHandle.createWritable({keepExistingData:true});
+		// Write the contents of the file to the stream.
+		await writable.write({type: 'write', data: contents, position: size});
+		// Close the file and write the contents to disk.
+		await writable.close();
+		
+		contents = null;
+	}
+	
+	// ==================== Init ====================================
+	
+	var isSupportedFileSystemAccess = supportsFileSystemAccess();
+	textversion = 'Your brower doesn\'t support v2, v1 will be used (file size limited to RAM memory available, 5Gb maximum).';
+	if (isSupportedFileSystemAccess)
+		textversion = 'Your browser is compatible with v2, only size of your hard drive free space will matter.';
+		
+	$('#version-implementation').html(textversion);
 				
 	// ==================== Encryption ==============================
 	
@@ -107,35 +136,43 @@ $(document).ready(function() {
 				limitedIndex += CHUNK_SIZE;
 				let limitedLast = limitedIndex >= file.size;
 				
+				limitedChunkEncryption(limitedLast, chunk, file);
+				
 				if (!limitedLast) {
 					$("#download_crypted .progress").html((Math.round(limitedIndex / file.size * 100)) + '%');
 				}
 				else {
 					$("#download_crypted .progress").html('100%');
-				}	
-
-				limitedChunkEncryption(limitedLast, chunk, file);
+				}				
 			});
 	};
 	
-	const handleEncryptedFileDownload = function() {
+	const handleEncryptedFileDownload = function() {		
+		if (isSupportedFileSystemAccess) {
+			// Download is finished for sure
+			
+			$('#encryptPanel .downloadPanel .success').append('<span class="message">Download is complete.</span>');
+			
+			fileHandleEncrypt = null;
+		}
+		else {
+			let fileName = selectedFileEncrypt.name + extensionEnc;
+			let blob = new Blob(limitedEncFileBuff);	
+			var url = window.URL.createObjectURL(blob);
+			let link = document.createElement("a");
+			link.href = url;
+			link.download = fileName;
+			
+			link.click();
+			window.URL.revokeObjectURL(url);
+			$('#encryptPanel .downloadPanel .success').append('<span class="message">Encrypting completed, download will start soon.</span>');
+		}
 		
-		let fileName = selectedFileEncrypt.name + extensionEnc;
-		let blob = new Blob(limitedEncFileBuff);
-		
-		var url = window.URL.createObjectURL(blob);
-		let link = document.createElement("a");
-		link.href = url;
-		link.download = fileName;
-		
+		cleanEncrypt();
 		$("#download_crypted .lds-ring").remove();
 		$("#download_crypted .progress").remove();
-		link.click();
-		
-		window.URL.revokeObjectURL(url);
-		cleanEncrypt();
 		$('#passwordEncrypt').val('');
-		$('#encryptPanel .downloadPanel .success').append('<span class="message">Encrypting completed, download will start soon.</span>');
+		$('#encryptButton').val('');
 		$('#encryptPanel .downloadPanel .success').css('display', 'inline-block');
 		$('#download_crypted').prop("disabled", false);
 	};
@@ -149,23 +186,37 @@ $(document).ready(function() {
 			? sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL
 			: sodium.crypto_secretstream_xchacha20poly1305_TAG_MESSAGE;
 
-		const limitedEncryptedChunk =
+		limitedEncryptedChunk =
 			sodium.crypto_secretstream_xchacha20poly1305_push(
 				limitedState,
 				new Uint8Array(chunk),
 				null,
 				limitedTag
 			);
+		
+		if (isSupportedFileSystemAccess) {
+			Promise.all([writeFile(fileHandleEncrypt, new Uint8Array(limitedEncryptedChunk))]).then(([success]) => {
+				limitedEncryptedChunk = null;
+				if (limitedLast) {
+					handleFinishedEncryption();
+				}
 
-		limitedEncFileBuff.push(new Uint8Array(limitedEncryptedChunk));
-
-		if (limitedLast) {
-			handleFinishedEncryption();
+				if (!limitedLast) {
+					continueLimitedEncryption(file);
+				}
+			});
 		}
+		else {
+			limitedEncFileBuff.push(new Uint8Array(limitedEncryptedChunk));
+			if (limitedLast) {
+				handleFinishedEncryption();
+			}
 
-		if (!limitedLast) {
-		  continueLimitedEncryption(file);
+			if (!limitedLast) {
+			  continueLimitedEncryption(file);
+			}
 		}
+		
 	};
 	
 	const startLimitedEncryption = function(file) {
@@ -176,15 +227,29 @@ $(document).ready(function() {
 		limitedEncFileBuff.push(SIGNATURE);
 		limitedEncFileBuff.push(limitedSalt);
 		limitedEncFileBuff.push(limitedHeader);
-		
-		file.slice(0, CHUNK_SIZE).arrayBuffer().then((chunk) => {
-			limitedIndex = CHUNK_SIZE;
-			let limitedLast = limitedIndex >= file.size;
-			limitedChunkEncryption(limitedLast, chunk, file);
-		});
+				
+		if (isSupportedFileSystemAccess) {
+			Promise.all([writeFile(fileHandleEncrypt, new Blob(limitedEncFileBuff))]).then(([success]) => {
+				file.slice(0, CHUNK_SIZE).arrayBuffer().then((chunk) => {
+					limitedEncFileBuff = null;
+					$("#download_crypted .progress").html('0%');
+					limitedIndex = CHUNK_SIZE;
+					let limitedLast = limitedIndex >= file.size;
+					limitedChunkEncryption(limitedLast, chunk, file);
+				});
+			});
+				
+		}
+		else {
+			file.slice(0, CHUNK_SIZE).arrayBuffer().then((chunk) => {
+				limitedIndex = CHUNK_SIZE;
+				let limitedLast = limitedIndex >= file.size;
+				limitedChunkEncryption(limitedLast, chunk, file);
+			});
+		}
 	};
 	
-	$('#download_crypted').click(function() {
+	$('#download_crypted').click(async function() {
 		$('#errors_block_encrypt').hide();
 		$('#errors_block_encrypt .error').remove();
 		$('#encryptPanel .downloadPanel .success .message').remove();
@@ -195,14 +260,25 @@ $(document).ready(function() {
 	
 		if (passwordEncrypt == '') {
 			error = true;
-			printError({name: 'Input error', message: 'please enter a password'}, 'errors_block_encrypt');
+			printError({name: 'Input error', message: 'please enter a password.'}, 'errors_block_encrypt');
 		}
 
 		if (selectedFileEncrypt === null) {
 			error = true;
-			printError({name: 'Input error', message: 'please choose a file to encrypt'}, 'errors_block_encrypt');
+			printError({name: 'Input error', message: 'please choose a file to encrypt.'}, 'errors_block_encrypt');
 		}
 		
+		if (error === false) {
+			if (isSupportedFileSystemAccess) {
+				let fileName = selectedFileEncrypt.name + extensionEnc;
+				fileHandleEncrypt = await getNewFileHandle(fileName);
+				if (fileHandleEncrypt === null) {
+					error = true;
+					printError({name: 'Input error', message: 'please choose the folder where encrypted file will be saved.'}, 'errors_block_encrypt');
+				}
+			}
+		}
+			
 		if (error === false) {
 			$('#download_crypted').append('<div class="lds-ring"><div></div><div></div><div></div><div></div></div>');
 			$('#download_crypted').append('<div class="progress"></div>');
@@ -213,7 +289,7 @@ $(document).ready(function() {
 			$('#errors_block_encrypt').show();
 		}
 	});
-
+	
 	const fileEncryptSelector = document.getElementById('encryptButton');
 
 	fileEncryptSelector.addEventListener('change', (event) => {		
@@ -223,10 +299,12 @@ $(document).ready(function() {
 		$('#errors_block_encrypt').hide();
 		$('#errors_block_encrypt .error').remove();
 		
-		if (selectedFileEncrypt.size > MAX_FILE_SIZE) {
-			$('#errors_block_encrypt').show();
-			printError({name: 'Input error', message: 'Selected file is too big (max 5Gb)'}, 'errors_block_encrypt');
-			selectedFileEncrypt = null;
+		if (!isSupportedFileSystemAccess) {
+			if (selectedFileEncrypt.size > MAX_FILE_SIZE) {
+				$('#errors_block_encrypt').show();
+				printError({name: 'Input error', message: 'file to encrypt is too big (5Gb maximum)'}, 'errors_block_encrypt');
+				selectedFileEncrypt = null;
+			}
 		}
 	});
 	
@@ -256,25 +334,32 @@ $(document).ready(function() {
 		}
 	};
 			
-	const handleDecryptedFileDownload = function() {
-		let fileName = formatName(selectedFileDecrypt.name);
-
-		let blob = new Blob(limitedDecFileBuff);
-
-		var url = window.URL.createObjectURL(blob);
-		let link = document.createElement("a");
-		link.href = url;
-		link.download = fileName;
+	const handleDecryptedFileDownload = function() {		
+		if (isSupportedFileSystemAccess) {
+			// Download is finished for sure
+			
+			$('#decryptPanel .downloadPanel .success').append('<span class="message">Download is complete.</span>');
+			
+			fileHandleDecrypt = null;
+		}
+		else {
+			let fileName = formatName(selectedFileDecrypt.name);			
+			let blob = new Blob(limitedDecFileBuff);
+			var url = window.URL.createObjectURL(blob);
+			let link = document.createElement("a");
+			link.href = url;
+			link.download = fileName;
+						
+			link.click();
+			window.URL.revokeObjectURL(url);
+			$('#decryptPanel .downloadPanel .success').append('<span class="message">Decrypting is over, download will start soon.</span>');
+		}
 		
+		cleanDecrypt();
 		$("#download_decrypted .lds-ring").remove();
 		$("#download_decrypted .progress").remove();
-		link.click();
-		
-		window.URL.revokeObjectURL(url);
-		cleanDecrypt();
-		
 		$('#passwordDecrypt').val('');
-		$('#decryptPanel .downloadPanel .success').append('<span class="message">Decrypting completed, download will start soon.</span>');
+		$('#decryptButton').val('');
 		$('#decryptPanel .downloadPanel .success').css('display', 'inline-block');
 		$('#download_decrypted').prop("disabled", false);
 	};
@@ -297,14 +382,15 @@ $(document).ready(function() {
 				limitedDecIndex +=
 				CHUNK_SIZE + sodium.crypto_secretstream_xchacha20poly1305_ABYTES;
 				let limitedDecLast = limitedDecIndex >= file.size;
+				
+				limitedChunkDecryption(limitedDecLast, chunk, dec_state);
+				
 				if (!limitedDecLast) {
 					$("#download_decrypted .progress").html((Math.round(limitedDecIndex / file.size * 100)) + '%');
 				}
 				else {
 					$("#download_decrypted .progress").html('100%');
-				}	
-				
-				limitedChunkDecryption(limitedDecLast, chunk, dec_state);
+				}
 		});
 	};
 	
@@ -317,14 +403,26 @@ $(document).ready(function() {
 		if (limitedDecResult) {
 			let limitedDecryptedChunk = limitedDecResult.message;
 
-			limitedDecFileBuff.push(new Uint8Array(limitedDecryptedChunk));
-
-			if (limitedDecLast) {
-				handleFinishedDecryption();
+			if (isSupportedFileSystemAccess) {
+				Promise.all([writeFile(fileHandleDecrypt, new Uint8Array(limitedDecryptedChunk))]).then(([success]) => {
+					limitedDecryptedChunk = null;
+					if (limitedDecLast) {
+						handleFinishedDecryption();
+					}
+					if (!limitedDecLast) {
+						continueLimitedDecryption(dec_state);
+					}		
+				});
 			}
-			if (!limitedDecLast) {
-				continueLimitedDecryption(dec_state);
-			}
+			else {
+				limitedDecFileBuff.push(new Uint8Array(limitedDecryptedChunk));
+				if (limitedDecLast) {
+					handleFinishedDecryption();
+				}
+				if (!limitedDecLast) {
+					continueLimitedDecryption(dec_state);
+				}
+			}			
 		}
 		else {
 			// Error wrong password
@@ -332,7 +430,7 @@ $(document).ready(function() {
 			$('#errors_block_decrypt .error').remove();
 			$("#download_decrypted .lds-ring").remove();
 			$('#download_decrypted').prop("disabled", false);
-			printError({name: 'Decrypting', message: 'Password is incorrect'}, 'errors_block_decrypt');
+			printError({name: 'Decrypting', message: 'password is incorrect'}, 'errors_block_decrypt');
 		}
 	};
 	
@@ -421,7 +519,7 @@ $(document).ready(function() {
 		});
 	}
 	
-	$('#download_decrypted').click(function() {		
+	$('#download_decrypted').click(async function() {		
 		$('#errors_block_decrypt').hide();
 		$('#errors_block_decrypt .error').remove();
 		$('#decryptPanel .downloadPanel .success .message').remove();
@@ -437,7 +535,18 @@ $(document).ready(function() {
 
 		if (selectedFileDecrypt === null) {
 			error = true;
-			printError({name: 'Input error', message: 'please chose a file to decrypt'}, 'errors_block_decrypt');
+			printError({name: 'Input error', message: 'please choose a file to decrypt'}, 'errors_block_decrypt');
+		}
+		
+		if (error === false) {
+			if (isSupportedFileSystemAccess) {
+				let fileName = formatName(selectedFileDecrypt.name);
+				fileHandleDecrypt = await getNewFileHandle(fileName);
+				if (fileHandleDecrypt === null) {
+					error = true;
+					printError({name: 'Input error', message: 'please choose the folder where decrypted file will be saved'}, 'errors_block_decrypt');
+				}
+			}
 		}
 		
 		if (error === false) {
@@ -450,7 +559,7 @@ $(document).ready(function() {
 			$('#errors_block_decrypt').show();
 		}
 	});
-					
+						
 	const fileDecryptSelector = document.getElementById('decryptButton');
 
 	fileDecryptSelector.addEventListener('change', (event) => {		
@@ -462,10 +571,12 @@ $(document).ready(function() {
 		
 		var error = false;
 		
-		if (selectedFileDecrypt.size > MAX_FILE_SIZE) {
-			$('#errors_block_decrypt').show();
-			selectedFileDecrypt = null;
-			printError({name: 'Input error', message: 'Selected file is too big (max 5Gb)'}, 'errors_block_decrypt');
+		if (!isSupportedFileSystemAccess) {
+			if (selectedFileDecrypt.size > MAX_FILE_SIZE) {
+				$('#errors_block_decrypt').show();
+				selectedFileDecrypt = null;
+				printError({name: 'Input error', message: 'file to decrypt is too big (5Gb maximum)'}, 'errors_block_decrypt');
+			}
 		}
 		
 		// Check signature
@@ -474,7 +585,7 @@ $(document).ready(function() {
 				$('#errors_block_decrypt').show();
 				selectedFileDecrypt = null;
 				printError({name: 'Input error',
-				message: "File uploaded hasn't been generated by this service or is corrupted (expected signature=" + SIGNATURES["v2_symmetric"] + ")"},
+				message: "file to decrypt hasn't been generated with this service or is corrupted (expected signature =" + SIGNATURES["v2_symmetric"] + ")."},
 				'errors_block_decrypt');
 			}
 		});

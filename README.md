@@ -1,5 +1,6 @@
 # libsodium-encrypt-decrypt-files
 Encrypt / decrypt files with a password with libsodium.js in your browser.
+You can use this tool locally on your device (open index.html with your browser) and offline.
 
 libsodium.js : browsers-sumo file https://github.com/jedisct1/libsodium.js/blob/master/dist/browsers-sumo/sodium.js
 
